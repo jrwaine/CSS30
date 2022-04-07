@@ -1,5 +1,7 @@
 import argparse
 import sys
+import time
+import traceback
 from dataclasses import dataclass
 
 from .service import Service
@@ -25,7 +27,15 @@ def main(*args):
     service = Service(process_id=args_cli.id_process, n_procs=args_cli.n_processes)
     service_ui = ServiceUI(service)
 
-    service.set_callback_state_change(service_ui.draw)
+    service.set_callback_state_change(service_ui.set_state_changed)
     service_ui.draw()
 
-    print("created")
+    try:
+        while True:
+            time.sleep(0.1)
+            service_ui.draw()
+    except KeyboardInterrupt:
+        exit()
+    except BaseException as e:
+        print("Error, exiting")
+        traceback.print_exc()
