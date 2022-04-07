@@ -1,5 +1,7 @@
 import socket
+import struct
 import threading
+import traceback
 from typing import Callable
 
 
@@ -12,28 +14,26 @@ class Connection:
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
         sock.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_TTL, 32)
         sock.sendto(msg.encode("utf-8"), (cls.MCAST_GRP, cls.MCAST_PORT))
+        sock.close()
 
     @classmethod
-    def listen_multicast(cls, msg_callback: Callable[[bytes]]) -> threading.Thread:
+    def listen_multicast(
+        cls, port: int, msg_callback: Callable[[bytes], None]
+    ) -> threading.Thread:
         def loop():
-            sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
-            try:
-                sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-            except AttributeError:
-                pass
-            sock.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_TTL, 32)
-            sock.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_LOOP, 1)
+            # MCAST_GRP = '224.1.1.1'
+            # MCAST_PORT = 5007
+            # IS_ALL_GROUPS = True
 
+            sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            # on this port, listen ONLY to MCAST_GRP
             sock.bind((cls.MCAST_GRP, cls.MCAST_PORT))
-            host = socket.gethostbyname(socket.gethostname())
-            sock.setsockopt(
-                socket.SOL_IP, socket.IP_MULTICAST_IF, socket.inet_aton(host)
+            mreq = struct.pack(
+                "4sl", socket.inet_aton(cls.MCAST_GRP), socket.INADDR_ANY
             )
-            sock.setsockopt(
-                socket.SOL_IP,
-                socket.IP_ADD_MEMBERSHIP,
-                socket.inet_aton(cls.MCAST_GRP) + socket.inet_aton(host),
-            )
+
+            sock.setsockopt(socket.IPPROTO_IP, socket.IP_ADD_MEMBERSHIP, mreq)
 
             try:
                 while True:
@@ -41,21 +41,23 @@ class Connection:
                         data, addr = sock.recvfrom(4096)
                         msg_callback(data)
                     except socket.error as e:
-                        print("Expection")
-            except:
-                sock.close()
+                        print("Expection socker", e)
+                        traceback.print_exc()
+            except Exception as e:
+                print("multicast error", e)
+                traceback.print_exc()
+            sock.close()
 
         t = threading.Thread(target=loop, args=(), daemon=True)
         t.start()
         return t
 
     @classmethod
-    def send_rcv_unicast(cls, msg: str, port: int) -> str:
+    def send_unicast(cls, msg: str, port: int):
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM, socket.IPPROTO_TCP)
-        sock.connect("localhost", port)
-        sock.send(msg)
-        b = sock.recv(4096)
-        return b.decode("utf-8")
+        sock.connect(("localhost", port))
+        sock.send(msg.encode("utf-8"))
+        sock.close()
 
     @classmethod
     def listen_unicast(
@@ -63,7 +65,7 @@ class Connection:
     ) -> threading.Thread:
         def loop():
             sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM, socket.IPPROTO_TCP)
-            sock.bind("localhost", port)
+            sock.bind(("localhost", port))
             sock.listen(5)
             try:
                 while True:
@@ -73,7 +75,7 @@ class Connection:
                         if not data:
                             break
                         answer = msg_callback(data)
-                        conn.send(answer)
+                        # conn.send(answer)
                     conn.close()
             except:
                 sock.close()

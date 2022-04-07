@@ -7,7 +7,8 @@ class _BaseRequest:
     port: int
 
     def to_json(self) -> str:
-        return json.dumps({"data": self.asdict(), "class": self.__name__})
+        val = json.dumps({"data": self.__dict__, "data_type": self.__class__.__name__})
+        return val
 
 
 @dataclass
@@ -18,16 +19,6 @@ class TokenRequest(_BaseRequest):
 @dataclass
 class TokenRequestAnswer(_BaseRequest):
     port_to: int
-
-
-@dataclass
-class PublicKeyRequest(_BaseRequest):
-    ...
-
-
-@dataclass
-class PublicKeyAnswer(_BaseRequest):
-    public_key: str
 
 
 def load_json(msg: str) -> dict:
