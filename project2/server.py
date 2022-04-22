@@ -1,11 +1,12 @@
-from typing import Dict, List, Any, Optional
 import time
-
-from .signer import get_key_pair
+from typing import Any, Dict, List, Optional
 
 import click
 import colorama
 from colorama import Back, Fore
+
+from .signer import get_key_pair
+
 
 class Server:
     MAX_RESOURCE_TIME_S: int = 30
@@ -13,8 +14,12 @@ class Server:
     def __init__(self, n_resources: int) -> None:
         self.n_resources = n_resources
         self.n_clients = 0
-        self.resource_time = Dict[int, Optional[float]] = {i: None for i in range(n_resources)}
-        self.resource_owner: Dict[int, Optional[int]] = {i: None for i in range(n_resources)}
+        self.resource_time = Dict[int, Optional[float]] = {
+            i: None for i in range(n_resources)
+        }
+        self.resource_owner: Dict[int, Optional[int]] = {
+            i: None for i in range(n_resources)
+        }
         self.queue_resources: Dict[int, List[int]] = {i: [] for i in range(n_resources)}
         self.pub_key, self.priv_key = get_key_pair()
 
@@ -39,13 +44,14 @@ class Server:
     def token_liberation(self, pid: int, resource: int):
         ...
 
-    def remote_ask_token(self, resource: int) -> Optional[int]:
+    def route_ask_token(self, resource: int) -> Optional[int]:
         ...
+
 
 class ServerUI:
     def __init__(self, s: Server) -> None:
         self.server = s
-        
+
     def draw_state(self):
         serv = self.server
         print(f"{Fore.YELLOW}Number of resources: {serv.n_resources}")
