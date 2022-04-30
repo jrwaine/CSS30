@@ -1,12 +1,15 @@
 import time
+from threading import Thread
 from typing import Any, Dict, List, Optional, Set
 
 import click
 import colorama
+import Pyro5.core
+import Pyro5.server
 from colorama import Back, Fore
 
-from .signer import get_key_pair, sign_message
 from .msgs import ResourceLiberation, ServerResp
+from .signer import get_key_pair, sign_message
 
 colorama.init(autoreset=True)
 
@@ -31,6 +34,22 @@ class Server:
         }
         self.clients_sent_pub_key: Set[int] = []
         self.queue_resources: Dict[int, List[int]] = {i: [] for i in range(n_resources)}
+        self.ui = ServerUI(self)
+
+    def _activate_server(self):
+        daemon = Pyro5.server.Daemon()
+        uri = daemon.register(self)
+        # print(uri)
+        ns = Pyro5.core.locate_ns()
+        ns.register("MyApp", uri)
+        uri = daemon.register(self)
+        daemon.requestLoop()
+
+    def __call__(self) -> Any:
+        self._activate_server()
+        t = Thread(target=self.serve_loop, daemon=True)
+        t.start()
+        print(f"{Fore.GREEN}Server is active")
 
     @property
     def n_clients(self):
@@ -69,11 +88,12 @@ class Server:
             # Remove pid from list
             pids.pop(0)
 
-    def serve(self):
+    def serve_loop(self):
         while True:
             time.sleep(0.5)
             self._check_resource_timeouts()
             self._send_queue_tokens()
+            self.ui.draw()
 
     def _get_resource_liberation(
         self, pid: int, resource: int, is_liberated: bool
@@ -113,6 +133,7 @@ class Server:
         self.resource_owner[resource] = None
         return True
 
+    @Pyro5.server.expose
     def route_ask_resource(self, pid: int, resource: int) -> str:
         owner = self.resource_owner[resource]
         is_liberated = True
@@ -126,6 +147,7 @@ class Server:
         msg_enc = sign_message(msg.to_json(), self.priv_key)
         return msg_enc
 
+    @Pyro5.server.expose
     def route_get_pid(self, cli: "Client") -> int:
         self.clients.append(cli)
         return len(self.clients) - 1

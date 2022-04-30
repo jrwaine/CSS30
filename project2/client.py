@@ -1,13 +1,15 @@
 import enum
 import time
+from threading import Thread
 from typing import Any, Dict, List, Literal, Optional
 
 import click
 import colorama
+import Pyro5.api
 from colorama import Back, Fore
 
+from .msgs import ResourceLiberation, ServerResp, load_json
 from .server import Server
-from .msgs import ServerResp, ResourceLiberation, load_json
 from .signer import validate_message
 
 colorama.init(autoreset=True)
@@ -26,12 +28,20 @@ class Client:
             i: States.RELEASED for i in range(n_resources)
         }
         self.pub_key = None
-        self.res_server: Server = Server()
 
-        self.pid = self.res_server.route_get_pid(self)
+        ns = Pyro5.core.locate_ns()
+        uri = ns.lookup("MyApp")
+        self.res_server = Pyro5.api.Proxy(uri)
+        self.ui = ClientUI(self)
 
-    def serve(self):
-        ...
+    def __call__(self) -> Any:
+        t = Thread(target=self.serve_loop, daemon=True)
+        t.start()
+        print(f"{Fore.GREEN}Server is active")
+
+    def serve_loop(self):
+        while True:
+            self.ui.draw()
 
     def take_action(self, action: Literal["ASK", "RELEASE"], resource: int):
         resource_state = self.curr_resources[resource]
@@ -76,6 +86,7 @@ class Client:
             else:
                 self.curr_resources[resource] = States.WANTED
 
+    @Pyro5.api.expose
     def route_receive_resource(self, msg: str):
         server_resp = ServerResp(**load_json(msg))
         if self.pub_key is None:
