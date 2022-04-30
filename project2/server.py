@@ -1,11 +1,14 @@
 import time
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Set
 
 import click
 import colorama
 from colorama import Back, Fore
 
-from .signer import get_key_pair
+from .signer import get_key_pair, sign_message
+from .msgs import ResourceLiberation, ServerResp
+
+colorama.init(autoreset=True)
 
 
 class Server:
@@ -14,14 +17,24 @@ class Server:
     def __init__(self, n_resources: int) -> None:
         self.n_resources = n_resources
         self.n_clients = 0
+        self.pub_key, self.priv_key = get_key_pair()
+
         self.resource_time = Dict[int, Optional[float]] = {
             i: None for i in range(n_resources)
         }
+
+        self.clients: List["Client"] = []
+
+        # Int is index in self.clients
         self.resource_owner: Dict[int, Optional[int]] = {
             i: None for i in range(n_resources)
         }
+        self.clients_sent_pub_key: Set[int] = []
         self.queue_resources: Dict[int, List[int]] = {i: [] for i in range(n_resources)}
-        self.pub_key, self.priv_key = get_key_pair()
+
+    @property
+    def n_clients(self):
+        return len(self.clients)
 
     @property
     def resources_time_for_timeout(self) -> Dict[int, Optional[float]]:
@@ -32,20 +45,90 @@ class Server:
         val = self.resource_time[resource]
         return None if val is None else round(time.time() - val, 2)
 
+    def _check_resource_timeouts(self):
+        timed_out = []
+        for resource, time_passed in self.resources_time_for_timeout:
+            if time_passed is None:
+                continue
+            if time_passed >= self.MAX_RESOURCE_TIME_S:
+                timed_out.append(resource)
+
+        for resource in timed_out:
+            self._timeout_resource(resource)
+
+    def _send_queue_tokens(self):
+        for resource, pids in self.queue_resources.items():
+            if len(pids) == 0:
+                continue
+            owner = self.resource_owner[resource]
+            if owner is not None:
+                continue
+            first_pid = pids[0]
+            # Send token for first pid in list
+            self._send_resource(first_pid, resource)
+            # Remove pid from list
+            pids.pop(0)
+
     def serve(self):
-        ...
+        while True:
+            time.sleep(0.5)
+            self._check_resource_timeouts()
+            self._send_queue_tokens()
 
-    def send_token(self, resource: int):
-        ...
+    def _get_resource_liberation(
+        self, pid: int, resource: int, is_liberated: bool
+    ) -> ResourceLiberation:
+        msg = ResourceLiberation(
+            is_liberated=is_liberated,
+            resource=resource,
+        )
+        return msg
 
-    def timeout_token(self):
-        ...
+    def _get_resp_send(self, pid: int, resource: int, is_liberated: bool) -> ServerResp:
+        res_liber = self._get_resource_liberation(pid, resource, is_liberated)
+        send_pub_key = True if (pid not in self.clients_sent_pub_key) else False
+        msg_res_liber = res_liber.to_json()
+        msg = ServerResp(
+            msg=sign_message(msg_res_liber, self.priv_key),
+            pub_key=self.pub_key if send_pub_key else None,
+        )
+        self.clients_sent_pub_key.add(pid)
+        return msg
 
-    def token_liberation(self, pid: int, resource: int):
-        ...
+    def _send_resource(self, pid: int, resource: int):
+        msg = self._get_resp_send(pid, resource, True)
+        cli = self.clients[pid]
+        msg_enc = sign_message(msg.to_json(), self.priv_key)
+        cli.route_receive_resource(msg_enc)
 
-    def route_ask_token(self, resource: int) -> Optional[int]:
-        ...
+    def _timeout_resource(self, resource: int):
+        self.resource_owner[resource] = None
+
+    def route_resource_liberation(self, pid: int, resource: int) -> bool:
+        owner = self.resource_owner[resource]
+        # Check if process really owns resource
+        if pid != owner:
+            return False
+        # Remove owner
+        self.resource_owner[resource] = None
+        return True
+
+    def route_ask_resource(self, pid: int, resource: int) -> str:
+        owner = self.resource_owner[resource]
+        is_liberated = True
+        if owner is not None:
+            is_liberated = False
+            queue_res = self.queue_resources[resource]
+            # If asking not already owns and is not in queue
+            if owner != pid and pid not in queue_res:
+                queue_res.append(pid)
+        msg = self._get_resp_send(pid, resource, is_liberated)
+        msg_enc = sign_message(msg.to_json(), self.priv_key)
+        return msg_enc
+
+    def route_get_pid(self, cli: "Client") -> int:
+        self.clients.append(cli)
+        return len(self.clients) - 1
 
 
 class ServerUI:

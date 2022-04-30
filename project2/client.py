@@ -6,6 +6,12 @@ import click
 import colorama
 from colorama import Back, Fore
 
+from .server import Server
+from .msgs import ServerResp, ResourceLiberation, load_json
+from .signer import validate_message
+
+colorama.init(autoreset=True)
+
 
 class States(enum.Enum):
     HELD = 1
@@ -20,6 +26,9 @@ class Client:
             i: States.RELEASED for i in range(n_resources)
         }
         self.pub_key = None
+        self.res_server: Server = Server()
+
+        self.pid = self.res_server.route_get_pid(self)
 
     def serve(self):
         ...
@@ -34,14 +43,53 @@ class Client:
             click.echo(f"Already released resource {resource}")
             return
 
-    def release_token(self, resource: int):
-        ...
+        func = (
+            self._release_resource
+            if action.upper() == "RELEASE"
+            else self._ask_resource
+        )
+        func(resource)
 
-    def ask_token(self, resource: int):
-        ...
+    def _release_resource(self, resource: int):
+        server = self.res_server
+        msg = self.res_server.route_resource_liberation(self.pid, resource)
+        if not msg:
+            print(f"{Fore.RED}Unable to release resource {resource}")
+        else:
+            self.curr_resources[resource] = States.RELEASED
 
-    def route_receive_token(self, resource: int):
-        ...
+    def _ask_resource(self, resource: int):
+        server = self.res_server
+        msg = server.route_ask_resource(self.pid)
+        server_resp = ServerResp(**load_json(msg))
+        if self.pub_key is None:
+            self.pub_key = server_resp
+
+        try:
+            res_msg = validate_message(server_resp.msg, self.pub_key)
+            res_liber = ResourceLiberation(**load_json(res_msg))
+        except Exception as e:
+            print(f"{Fore.RED}Unable to decode message with key {self.pub_key}")
+        else:
+            if res_liber.is_liberated:
+                self.curr_resources[resource] = States.HELD
+            else:
+                self.curr_resources[resource] = States.WANTED
+
+    def route_receive_resource(self, msg: str):
+        server_resp = ServerResp(**load_json(msg))
+        if self.pub_key is None:
+            self.pub_key = server_resp.pub_key
+
+        try:
+            res_msg = validate_message(server_resp.msg, self.pub_key)
+            res_liber = ResourceLiberation(**load_json(res_msg))
+        except Exception as e:
+            print(f"{Fore.RED}Unable to decode route message with key {self.pub_key}")
+        else:
+            resource = res_liber.resource
+            if res_liber.is_liberated:
+                self.curr_resources[resource] = States.HELD
 
 
 class ClientUI:
