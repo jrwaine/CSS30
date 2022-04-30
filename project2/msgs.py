@@ -6,7 +6,7 @@ from typing import Optional
 @dataclass
 class _BaseRequest:
     def to_json(self) -> str:
-        val = json.dumps({"data": self.__dict__, "data_type": self.__class__.__name__})
+        val = json.dumps(self.__dict__)
         return val
 
 

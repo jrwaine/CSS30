@@ -4,8 +4,8 @@ from typing import Any, Dict, List, Optional, Set
 
 import click
 import colorama
+import Pyro5.api
 import Pyro5.core
-import Pyro5.server
 from colorama import Back, Fore
 
 from .msgs import ResourceLiberation, ServerResp
@@ -19,10 +19,9 @@ class Server:
 
     def __init__(self, n_resources: int) -> None:
         self.n_resources = n_resources
-        self.n_clients = 0
         self.pub_key, self.priv_key = get_key_pair()
 
-        self.resource_time = Dict[int, Optional[float]] = {
+        self.resource_time: Dict[int, Optional[float]] = {
             i: None for i in range(n_resources)
         }
 
@@ -32,21 +31,21 @@ class Server:
         self.resource_owner: Dict[int, Optional[int]] = {
             i: None for i in range(n_resources)
         }
-        self.clients_sent_pub_key: Set[int] = []
+        self.clients_sent_pub_key: Set[int] = set()
         self.queue_resources: Dict[int, List[int]] = {i: [] for i in range(n_resources)}
         self.ui = ServerUI(self)
 
     def _activate_server(self):
-        daemon = Pyro5.server.Daemon()
+        daemon = Pyro5.api.Daemon()
         uri = daemon.register(self)
         # print(uri)
         ns = Pyro5.core.locate_ns()
         ns.register("MyApp", uri)
-        uri = daemon.register(self)
-        daemon.requestLoop()
+        uri = daemon.register(self, force=True)
+        t = Thread(target=daemon.requestLoop, daemon=True)
+        t.start()
 
     def __call__(self) -> Any:
-        self._activate_server()
         t = Thread(target=self.serve_loop, daemon=True)
         t.start()
         print(f"{Fore.GREEN}Server is active")
@@ -59,14 +58,13 @@ class Server:
     def resources_time_for_timeout(self) -> Dict[int, Optional[float]]:
         return {i: self.time_for_timeout(i) for i in range(self.n_resources)}
 
-    @property
     def time_for_timeout(self, resource: int) -> Optional[float]:
         val = self.resource_time[resource]
         return None if val is None else round(time.time() - val, 2)
 
     def _check_resource_timeouts(self):
         timed_out = []
-        for resource, time_passed in self.resources_time_for_timeout:
+        for resource, time_passed in self.resources_time_for_timeout.items():
             if time_passed is None:
                 continue
             if time_passed >= self.MAX_RESOURCE_TIME_S:
@@ -85,11 +83,16 @@ class Server:
             first_pid = pids[0]
             # Send token for first pid in list
             self._send_resource(first_pid, resource)
+            self.resource_owner[resource] = first_pid
             # Remove pid from list
             pids.pop(0)
 
     def serve_loop(self):
+        self._activate_server()
+        loop_count = 0
         while True:
+            loop_count += 1
+            print("here", loop_count)
             time.sleep(0.5)
             self._check_resource_timeouts()
             self._send_queue_tokens()
@@ -124,16 +127,21 @@ class Server:
     def _timeout_resource(self, resource: int):
         self.resource_owner[resource] = None
 
+    @Pyro5.api.expose
     def route_resource_liberation(self, pid: int, resource: int) -> bool:
         owner = self.resource_owner[resource]
         # Check if process really owns resource
         if pid != owner:
-            return False
+            # Check if pid is in queue
+            if pid not in self.queue_resources[resource]:
+                return False
+            else:
+                self.queue_resources[resource].remove(pid)
         # Remove owner
         self.resource_owner[resource] = None
         return True
 
-    @Pyro5.server.expose
+    @Pyro5.api.expose
     def route_ask_resource(self, pid: int, resource: int) -> str:
         owner = self.resource_owner[resource]
         is_liberated = True
@@ -144,10 +152,12 @@ class Server:
             if owner != pid and pid not in queue_res:
                 queue_res.append(pid)
         msg = self._get_resp_send(pid, resource, is_liberated)
+        if is_liberated:
+            self.resource_owner[resource] = pid
         msg_enc = sign_message(msg.to_json(), self.priv_key)
         return msg_enc
 
-    @Pyro5.server.expose
+    @Pyro5.api.expose
     def route_get_pid(self, cli: "Client") -> int:
         self.clients.append(cli)
         return len(self.clients) - 1

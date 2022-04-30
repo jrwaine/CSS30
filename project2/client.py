@@ -29,17 +29,23 @@ class Client:
         }
         self.pub_key = None
 
-        ns = Pyro5.core.locate_ns()
-        uri = ns.lookup("MyApp")
-        self.res_server = Pyro5.api.Proxy(uri)
         self.ui = ClientUI(self)
 
     def __call__(self) -> Any:
         t = Thread(target=self.serve_loop, daemon=True)
         t.start()
-        print(f"{Fore.GREEN}Server is active")
 
     def serve_loop(self):
+        daemon = Pyro5.api.Daemon()
+        # callback = self.route_receive_resource
+        daemon.register(self)
+        # print(f"{Fore.GREEN}Client is active")
+        ns = Pyro5.core.locate_ns()
+        uri = ns.lookup("MyApp")
+        self.res_server: Server = Pyro5.api.Proxy(uri)
+        # inicializa a thread para receber notificações do servidor
+        self.pid = self.res_server.route_get_pid(self)
+
         while True:
             self.ui.draw()
 
@@ -62,7 +68,8 @@ class Client:
 
     def _release_resource(self, resource: int):
         server = self.res_server
-        msg = self.res_server.route_resource_liberation(self.pid, resource)
+
+        msg = server.route_resource_liberation(self.pid, resource)
         if not msg:
             print(f"{Fore.RED}Unable to release resource {resource}")
         else:
@@ -70,10 +77,11 @@ class Client:
 
     def _ask_resource(self, resource: int):
         server = self.res_server
-        msg = server.route_ask_resource(self.pid)
+        msg = server.route_ask_resource(self.pid, resource)
+        print(msg)
         server_resp = ServerResp(**load_json(msg))
         if self.pub_key is None:
-            self.pub_key = server_resp
+            self.pub_key = server_resp.pub_key
 
         try:
             res_msg = validate_message(server_resp.msg, self.pub_key)
@@ -87,6 +95,7 @@ class Client:
                 self.curr_resources[resource] = States.WANTED
 
     @Pyro5.api.expose
+    @Pyro5.api.callback
     def route_receive_resource(self, msg: str):
         server_resp = ServerResp(**load_json(msg))
         if self.pub_key is None:
@@ -114,7 +123,7 @@ class ClientUI:
         print()
         print(
             f"{Fore.YELLOW}Current states: "
-            + {k: v.name for k, v in client.curr_resources.items()}
+            + str({k: v.name for k, v in client.curr_resources.items()})
         )
 
     def draw_options(self):
@@ -136,7 +145,7 @@ class ClientUI:
                 )
                 return
         elif action.upper() == "RELEASE":
-            if all(v in (States.RELEASED) for v in client.curr_resources.values()):
+            if all(v == States.RELEASED for v in client.curr_resources.values()):
                 click.echo("Released all resources already. Unable to release more")
                 return
 
