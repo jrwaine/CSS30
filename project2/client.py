@@ -30,24 +30,32 @@ class Client:
         self.pub_key = None
 
         self.ui = ClientUI(self)
+        self.cli_callback = ClientCallback(self)
 
     def __call__(self) -> Any:
-        t = Thread(target=self.serve_loop, daemon=True)
-        t.start()
+        self.serve_loop()
+
+    def has_action(self):
+        return len(self.actions) > 0
+
+    def draw_loop(self):
+        while True:
+            time.sleep(0.5)
+            self.ui.draw()
 
     def serve_loop(self):
-        daemon = Pyro5.api.Daemon()
+        self.daemon = Pyro5.api.Daemon()
         # callback = self.route_receive_resource
-        daemon.register(self)
+        self.daemon.register(self.cli_callback)
         # print(f"{Fore.GREEN}Client is active")
         ns = Pyro5.core.locate_ns()
         uri = ns.lookup("MyApp")
         self.res_server: Server = Pyro5.api.Proxy(uri)
         # inicializa a thread para receber notificações do servidor
-        self.pid = self.res_server.route_get_pid(self)
-
-        while True:
-            self.ui.draw()
+        self.pid = self.res_server.route_get_pid(self.cli_callback)
+        t = Thread(target=self.draw_loop)
+        t.start()
+        self.daemon.requestLoop()
 
     def take_action(self, action: Literal["ASK", "RELEASE"], resource: int):
         resource_state = self.curr_resources[resource]
@@ -68,6 +76,7 @@ class Client:
 
     def _release_resource(self, resource: int):
         server = self.res_server
+        server._pyroClaimOwnership()
 
         msg = server.route_resource_liberation(self.pid, resource)
         if not msg:
@@ -77,8 +86,9 @@ class Client:
 
     def _ask_resource(self, resource: int):
         server = self.res_server
+        server._pyroClaimOwnership()
+
         msg = server.route_ask_resource(self.pid, resource)
-        print(msg)
         server_resp = ServerResp(**load_json(msg))
         if self.pub_key is None:
             self.pub_key = server_resp.pub_key
@@ -94,22 +104,28 @@ class Client:
             else:
                 self.curr_resources[resource] = States.WANTED
 
+
+class ClientCallback(object):
+    def __init__(self, client: Client) -> None:
+        self.client = client
+
     @Pyro5.api.expose
     @Pyro5.api.callback
     def route_receive_resource(self, msg: str):
+        client = self.client
         server_resp = ServerResp(**load_json(msg))
-        if self.pub_key is None:
-            self.pub_key = server_resp.pub_key
+        if client.pub_key is None:
+            client.pub_key = server_resp.pub_key
 
         try:
-            res_msg = validate_message(server_resp.msg, self.pub_key)
+            res_msg = validate_message(server_resp.msg, client.pub_key)
             res_liber = ResourceLiberation(**load_json(res_msg))
         except Exception as e:
-            print(f"{Fore.RED}Unable to decode route message with key {self.pub_key}")
+            print(f"{Fore.RED}Unable to decode route message with key {client.pub_key}")
         else:
             resource = res_liber.resource
             if res_liber.is_liberated:
-                self.curr_resources[resource] = States.HELD
+                client.curr_resources[resource] = States.HELD
 
 
 class ClientUI:

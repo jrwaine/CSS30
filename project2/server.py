@@ -1,6 +1,6 @@
 import time
 from threading import Thread
-from typing import Any, Dict, List, Optional, Set
+from typing import Any, Callable, Dict, List, Optional, Set
 
 import click
 import colorama
@@ -25,9 +25,9 @@ class Server:
             i: None for i in range(n_resources)
         }
 
-        self.clients: List["Client"] = []
+        self.callbacks: List[Callable] = []
 
-        # Int is index in self.clients
+        # Int is index in self.callbacks
         self.resource_owner: Dict[int, Optional[int]] = {
             i: None for i in range(n_resources)
         }
@@ -36,14 +36,14 @@ class Server:
         self.ui = ServerUI(self)
 
     def _activate_server(self):
-        daemon = Pyro5.api.Daemon()
-        uri = daemon.register(self)
+        self.daemon = Pyro5.api.Daemon()
+        uri = self.daemon.register(self)
         # print(uri)
         ns = Pyro5.core.locate_ns()
         ns.register("MyApp", uri)
-        uri = daemon.register(self, force=True)
-        t = Thread(target=daemon.requestLoop, daemon=True)
-        t.start()
+        uri = self.daemon.register(self, force=True)
+        # daemon.requestLoop()
+        self.daemon.requestLoop()
 
     def __call__(self) -> Any:
         t = Thread(target=self.serve_loop, daemon=True)
@@ -52,7 +52,7 @@ class Server:
 
     @property
     def n_clients(self):
-        return len(self.clients)
+        return len(self.callbacks)
 
     @property
     def resources_time_for_timeout(self) -> Dict[int, Optional[float]]:
@@ -73,7 +73,7 @@ class Server:
         for resource in timed_out:
             self._timeout_resource(resource)
 
-    def _send_queue_tokens(self):
+    def _send_queue_resources(self):
         for resource, pids in self.queue_resources.items():
             if len(pids) == 0:
                 continue
@@ -87,16 +87,20 @@ class Server:
             # Remove pid from list
             pids.pop(0)
 
-    def serve_loop(self):
-        self._activate_server()
+    def draw_loop(self):
         loop_count = 0
         while True:
             loop_count += 1
             print("here", loop_count)
             time.sleep(0.5)
             self._check_resource_timeouts()
-            self._send_queue_tokens()
+            self._send_queue_resources()
             self.ui.draw()
+
+    def serve_loop(self):
+        t = Thread(target=self.draw_loop)
+        t.start()
+        self._activate_server()
 
     def _get_resource_liberation(
         self, pid: int, resource: int, is_liberated: bool
@@ -120,9 +124,11 @@ class Server:
 
     def _send_resource(self, pid: int, resource: int):
         msg = self._get_resp_send(pid, resource, True)
-        cli = self.clients[pid]
+        callback = self.callbacks[pid]
         msg_enc = sign_message(msg.to_json(), self.priv_key)
-        cli.route_receive_resource(msg_enc)
+        # cli._pyroClaimOwnership()
+        callback._pyroClaimOwnership()
+        callback.route_receive_resource(msg_enc)
 
     def _timeout_resource(self, resource: int):
         self.resource_owner[resource] = None
@@ -144,6 +150,7 @@ class Server:
     @Pyro5.api.expose
     def route_ask_resource(self, pid: int, resource: int) -> str:
         owner = self.resource_owner[resource]
+        # self._send_resource(pid, resource)
         is_liberated = True
         if owner is not None:
             is_liberated = False
@@ -158,9 +165,9 @@ class Server:
         return msg_enc
 
     @Pyro5.api.expose
-    def route_get_pid(self, cli: "Client") -> int:
-        self.clients.append(cli)
-        return len(self.clients) - 1
+    def route_get_pid(self, callback: Callable) -> int:
+        self.callbacks.append(callback)
+        return len(self.callbacks) - 1
 
 
 class ServerUI:
