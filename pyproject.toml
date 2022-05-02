@@ -9,6 +9,7 @@ license = "MIT"
 python = "^3.8"
 colorama = "^0.4.4"
 Pyro5 = "^5.13.1"
+pycryptodome = "^3.14.1"
 
 [tool.poetry.dev-dependencies]
 black = "^22.3.0"
