@@ -15,10 +15,11 @@ colorama.init(autoreset=True)
 
 
 class Server:
-    MAX_RESOURCE_TIME_S: int = 30
+    MAX_RESOURCE_TIME_S: int = 5
 
-    def __init__(self, n_resources: int) -> None:
+    def __init__(self, n_resources: int, interactive: bool = True) -> None:
         self.n_resources = n_resources
+        self.interactive = interactive
         self.pub_key, self.priv_key = get_key_pair()
 
         self.resource_time: Dict[int, Optional[float]] = {
@@ -35,6 +36,9 @@ class Server:
         self.queue_resources: Dict[int, List[int]] = {i: [] for i in range(n_resources)}
         self.ui = ServerUI(self)
 
+    def __del__(self):
+        self.daemon.close()
+
     def _activate_server(self):
         self.daemon = Pyro5.api.Daemon()
         uri = self.daemon.register(self)
@@ -45,7 +49,7 @@ class Server:
         # daemon.requestLoop()
         self.daemon.requestLoop()
 
-    def __call__(self) -> Any:
+    def start(self) -> Any:
         t = Thread(target=self.serve_loop, daemon=True)
         t.start()
         print(f"{Fore.GREEN}Server is active")
@@ -83,19 +87,19 @@ class Server:
             first_pid = pids[0]
             # Send token for first pid in list
             self._send_resource(first_pid, resource)
-            self.resource_owner[resource] = first_pid
             # Remove pid from list
             pids.pop(0)
 
     def draw_loop(self):
         loop_count = 0
         while True:
-            loop_count += 1
-            print("here", loop_count)
-            time.sleep(0.5)
             self._check_resource_timeouts()
             self._send_queue_resources()
-            self.ui.draw()
+            if(self.interactive):
+                loop_count += 1
+                print("loop count", loop_count)
+                time.sleep(0.05)
+                self.ui.draw()
 
     def serve_loop(self):
         t = Thread(target=self.draw_loop)
@@ -129,9 +133,12 @@ class Server:
         # cli._pyroClaimOwnership()
         callback._pyroClaimOwnership()
         callback.route_receive_resource(msg_enc)
+        self.resource_time[resource] = time.time()
+        self.resource_owner[resource] = pid
 
     def _timeout_resource(self, resource: int):
         self.resource_owner[resource] = None
+        self.resource_time[resource] = None
 
     @Pyro5.api.expose
     def route_resource_liberation(self, pid: int, resource: int) -> bool:
@@ -145,6 +152,7 @@ class Server:
                 self.queue_resources[resource].remove(pid)
         # Remove owner
         self.resource_owner[resource] = None
+        self.resource_time[resource] = None
         return True
 
     @Pyro5.api.expose
@@ -161,6 +169,7 @@ class Server:
         msg = self._get_resp_send(pid, resource, is_liberated)
         if is_liberated:
             self.resource_owner[resource] = pid
+            self.resource_time[resource] = time.time()
         msg_enc = sign_message(msg.to_json(), self.priv_key)
         return msg_enc
 

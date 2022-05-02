@@ -22,8 +22,9 @@ class States(enum.Enum):
 
 
 class Client:
-    def __init__(self, n_resources: int) -> None:
+    def __init__(self, n_resources: int, interactive: bool = True) -> None:
         self.n_resources = n_resources
+        self.interactive = interactive
         self.curr_resources: Dict[int, States] = {
             i: States.RELEASED for i in range(n_resources)
         }
@@ -32,16 +33,23 @@ class Client:
         self.ui = ClientUI(self)
         self.cli_callback = ClientCallback(self)
 
-    def __call__(self) -> Any:
+    def __del__(self):
+        self.daemon.close()
+
+    def start(self) -> Any:
         self.serve_loop()
 
     def has_action(self):
         return len(self.actions) > 0
 
     def draw_loop(self):
+        loop_count = 0
         while True:
-            time.sleep(0.5)
-            self.ui.draw()
+            time.sleep(0.05)
+            if(self.interactive):
+                loop_count += 1
+                print("loop count", loop_count)
+                self.ui.draw()
 
     def serve_loop(self):
         self.daemon = Pyro5.api.Daemon()
