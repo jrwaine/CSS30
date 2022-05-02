@@ -15,7 +15,7 @@ colorama.init(autoreset=True)
 
 
 class Server:
-    MAX_RESOURCE_TIME_S: int = 5
+    MAX_RESOURCE_TIME_S: int = 30
 
     def __init__(self, n_resources: int, interactive: bool = True) -> None:
         self.n_resources = n_resources
