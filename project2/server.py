@@ -35,6 +35,7 @@ class Server:
         self.clients_sent_pub_key: Set[int] = set()
         self.queue_resources: Dict[int, List[int]] = {i: [] for i in range(n_resources)}
         self.ui = ServerUI(self)
+        self.uri = None
 
     def __del__(self):
         self.daemon.close()
@@ -45,14 +46,13 @@ class Server:
         # print(uri)
         ns = Pyro5.core.locate_ns()
         ns.register("MyApp", uri)
-        uri = self.daemon.register(self, force=True)
+        self.uri = self.daemon.register(self, force=True)
         # daemon.requestLoop()
         self.daemon.requestLoop()
 
     def start(self) -> Any:
         t = Thread(target=self.serve_loop, daemon=True)
         t.start()
-        print(f"{Fore.GREEN}Server is active")
 
     @property
     def n_clients(self):
@@ -91,6 +91,11 @@ class Server:
             pids.pop(0)
 
     def draw_loop(self):
+        time.sleep(0.5)
+        if self.uri is None:
+            print(f"{Fore.RED}Unable to start server")
+            return
+        print(f"{Fore.GREEN}Server is active")
         loop_count = 0
         while True:
             self._check_resource_timeouts()

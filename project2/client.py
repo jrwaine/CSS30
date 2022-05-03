@@ -97,7 +97,7 @@ class Client:
         server._pyroClaimOwnership()
 
         msg = server.route_ask_resource(self.pid, resource)
-        print("msg", msg)
+        # print("msg", msg)
         server_resp = ServerResp(**load_json(msg))
         if self.pub_key is None:
             self.pub_key = server_resp.pub_key
