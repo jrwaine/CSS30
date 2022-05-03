@@ -45,8 +45,8 @@ class Client:
     def draw_loop(self):
         loop_count = 0
         while True:
-            time.sleep(0.05)
-            if(self.interactive):
+            time.sleep(0.25)
+            if self.interactive:
                 loop_count += 1
                 print("loop count", loop_count)
                 self.ui.draw()
@@ -97,13 +97,14 @@ class Client:
         server._pyroClaimOwnership()
 
         msg = server.route_ask_resource(self.pid, resource)
+        print("msg", msg)
         server_resp = ServerResp(**load_json(msg))
         if self.pub_key is None:
             self.pub_key = server_resp.pub_key
 
         try:
-            res_msg = validate_message(server_resp.msg, self.pub_key)
-            res_liber = ResourceLiberation(**load_json(res_msg))
+            validate_message("I am the truth", self.pub_key, server_resp.sign)
+            res_liber = ResourceLiberation(**load_json(server_resp.msg))
         except Exception as e:
             print(f"{Fore.RED}Unable to decode message with key {self.pub_key}")
         else:
@@ -126,8 +127,8 @@ class ClientCallback(object):
             client.pub_key = server_resp.pub_key
 
         try:
-            res_msg = validate_message(server_resp.msg, client.pub_key)
-            res_liber = ResourceLiberation(**load_json(res_msg))
+            validate_message("I am the truth", client.pub_key, server_resp.sign)
+            res_liber = ResourceLiberation(**load_json(server_resp.msg))
         except Exception as e:
             print(f"{Fore.RED}Unable to decode route message with key {client.pub_key}")
         else:
@@ -142,8 +143,11 @@ class ClientUI:
 
     def draw_state(self):
         client = self.client
+        pub_key_print = (
+            (client.pub_key[:100] + "...") if client.pub_key is not None else None
+        )
         print(f"{Fore.YELLOW}Number of resources: {client.n_resources}")
-        print(f"{Fore.YELLOW}Pub server key: {client.pub_key}")
+        print(f"{Fore.YELLOW}Pub server key: {pub_key_print}")
         print()
         print(
             f"{Fore.YELLOW}Current states: "

@@ -34,10 +34,10 @@ def main(*args):
 
     if cli_args.proc_type == "server":
         serv = Server(cli_args.n_resources)
-        serv()
+        serv.start()
     elif cli_args.proc_type == "client":
         client = Client(cli_args.n_resources)
-        client()
+        client.start()
 
     while True:
         time.sleep(0.5)

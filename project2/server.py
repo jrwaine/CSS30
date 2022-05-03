@@ -95,10 +95,10 @@ class Server:
         while True:
             self._check_resource_timeouts()
             self._send_queue_resources()
-            if(self.interactive):
+            if self.interactive:
                 loop_count += 1
                 print("loop count", loop_count)
-                time.sleep(0.05)
+                time.sleep(0.25)
                 self.ui.draw()
 
     def serve_loop(self):
@@ -120,7 +120,7 @@ class Server:
         send_pub_key = True if (pid not in self.clients_sent_pub_key) else False
         msg_res_liber = res_liber.to_json()
         msg = ServerResp(
-            msg=sign_message(msg_res_liber, self.priv_key),
+            msg=msg_res_liber,
             pub_key=self.pub_key if send_pub_key else None,
         )
         self.clients_sent_pub_key.add(pid)
@@ -129,10 +129,11 @@ class Server:
     def _send_resource(self, pid: int, resource: int):
         msg = self._get_resp_send(pid, resource, True)
         callback = self.callbacks[pid]
-        msg_enc = sign_message(msg.to_json(), self.priv_key)
+        msg.sign = sign_message("I am the truth", self.priv_key)
+        msg_send = msg.to_json()
         # cli._pyroClaimOwnership()
         callback._pyroClaimOwnership()
-        callback.route_receive_resource(msg_enc)
+        callback.route_receive_resource(msg_send)
         self.resource_time[resource] = time.time()
         self.resource_owner[resource] = pid
 
@@ -170,8 +171,9 @@ class Server:
         if is_liberated:
             self.resource_owner[resource] = pid
             self.resource_time[resource] = time.time()
-        msg_enc = sign_message(msg.to_json(), self.priv_key)
-        return msg_enc
+        msg.sign = sign_message("I am the truth", self.priv_key)
+        msg_send = msg.to_json()
+        return msg_send
 
     @Pyro5.api.expose
     def route_get_pid(self, callback: Callable) -> int:
@@ -187,8 +189,8 @@ class ServerUI:
         serv = self.server
         print(f"{Fore.YELLOW}Number of resources: {serv.n_resources}")
         print(f"{Fore.YELLOW}Number of clients: {serv.n_clients}")
-        print(f"{Fore.YELLOW}Public key: {serv.pub_key}")
-        print(f"{Fore.YELLOW}Private key: {serv.priv_key}")
+        print(f"{Fore.YELLOW}Public key: {serv.pub_key[:100]}...")
+        print(f"{Fore.YELLOW}Private key: {serv.priv_key[:100]}...")
         print()
         print(f"{Fore.YELLOW}Resources owners: {serv.resource_owner}")
         print(f"{Fore.YELLOW}Resources timeout: {serv.resources_time_for_timeout}")

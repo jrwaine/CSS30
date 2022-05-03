@@ -20,6 +20,7 @@ class ResourceLiberation(_BaseRequest):
 class ServerResp(_BaseRequest):
     msg: str
     pub_key: Optional[str]
+    sign: str = "I am the truth"
 
 
 def load_json(msg: str) -> dict:
