@@ -89,6 +89,7 @@ class Client:
         msg = server.route_resource_liberation(self.pid, resource)
         if not msg:
             print(f"{Fore.RED}Unable to release resource {resource}")
+            self.curr_resources[resource] = States.RELEASED
         else:
             self.curr_resources[resource] = States.RELEASED
 
