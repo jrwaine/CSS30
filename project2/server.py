@@ -98,12 +98,12 @@ class Server:
         print(f"{Fore.GREEN}Server is active")
         loop_count = 0
         while True:
+            time.sleep(0.25)
             self._check_resource_timeouts()
             self._send_queue_resources()
             if self.interactive:
                 loop_count += 1
                 print("loop count", loop_count)
-                time.sleep(0.25)
                 self.ui.draw()
 
     def serve_loop(self):
