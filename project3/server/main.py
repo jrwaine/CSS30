@@ -1,10 +1,10 @@
 import argparse
-import time
 from dataclasses import dataclass
-from typing import Literal
 
-from ._client import Client
-from .server import Server
+import uvicorn
+
+from .app import app
+from .resource_hdlr import setup_resources_hdlr
 
 
 @dataclass
@@ -24,8 +24,6 @@ def parse_args(*args) -> ArgsCLI:
 def main(*args):
     cli_args = parse_args(*args)
 
-    serv = Server(cli_args.n_resources)
-    serv.start()
+    setup_resources_hdlr(cli_args.n_resources, interactive=True)
 
-    while True:
-        time.sleep(0.5)
+    uvicorn.run(app, host="0.0.0.0", port=8000)
