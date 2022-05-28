@@ -2,12 +2,23 @@ import asyncio
 import time
 
 from fastapi import Depends, FastAPI, HTTPException, Request
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from sse_starlette.sse import EventSourceResponse
 
 from .resource_hdlr import ResourceHandler, get_resources_hdlr
 
+
+origins = ["http://localhost:3000"]
 app = FastAPI()
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 class ResourceLiberation(BaseModel):
@@ -34,7 +45,7 @@ async def request_resource(
                 if count % 10:
                     yield "Not liberated"
                 count += 1
-                await asyncio.sleep(0.1)
+                time.sleep(0.1)
             else:
                 yield "Liberated"
                 break

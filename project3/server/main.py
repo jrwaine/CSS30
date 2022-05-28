@@ -18,7 +18,7 @@ def parse_args(*args) -> ArgsCLI:
         "--n-resources", help="Number of resources", required=True, type=int
     )
     parsed = ap.parse_args(args)
-    return ArgsCLI(proc_type=parsed.proc_type, n_resources=parsed.n_resources)
+    return ArgsCLI(n_resources=parsed.n_resources)
 
 
 def main(*args):

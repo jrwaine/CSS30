@@ -62,7 +62,7 @@ class ResourceHandler:
 
     @property
     def n_clients(self):
-        return len(self.callbacks)
+        return len(self.clients)
 
     @property
     def resources_time_for_timeout(self) -> Dict[int, Optional[float]]:

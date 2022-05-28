@@ -5,8 +5,7 @@ from threading import Thread
 from fastapi.testclient import TestClient
 
 from .app import app
-from .resource_hdlr import (ResourceHandler, get_resources_hdlr,
-                            setup_resources_hdlr)
+from .resource_hdlr import ResourceHandler, get_resources_hdlr, setup_resources_hdlr
 
 
 class TestProject3(unittest.TestCase):
