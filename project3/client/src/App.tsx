@@ -7,6 +7,18 @@ interface AppState {
   clientID: number;
 }
 
+const clientID = axios
+  .get<number>(`${url}/new_id`)
+  .then((response) => {
+    let clientID = response.data;
+    console.log("clientID", clientID, response);
+    return clientID;
+  })
+  .catch((reason) => {
+    console.log(reason);
+    return -1;
+  });
+
 class App extends React.Component<{}, AppState> {
   constructor(props: {}) {
     super(props);
@@ -14,24 +26,13 @@ class App extends React.Component<{}, AppState> {
   }
 
   componentDidMount() {
-    if (this.state.clientID === -1) {
-      this.askClientID().then((clientID) => {
-        this.setState({ ...this.state, clientID: clientID });
-      });
-    }
+    clientID.then((num) => {
+      this.setState({...this.state, clientID: num});
+    })
+    
   }
   askClientID() {
-    return axios
-      .get<number>(`${url}/new_id`)
-      .then((response) => {
-        let clientID = response.data;
-        console.log("clientID", clientID, response);
-        return clientID;
-      })
-      .catch((reason) => {
-        console.log(reason);
-        return -1;
-      });
+    return 
   }
 
   render() {
